@@ -5,27 +5,45 @@ export enum NodeType {
   Div,
 }
 
-type NodeStylePropertyKey = 'layout' | 'tag' | 'subarea'
+type TransformNodeStylePropertyKey = 'layout' | 'tag' | 'subarea'
 
-type TransformInputNodeStyle = Record<NodeStylePropertyKey, string>
+type NonTransformNodeStylePropertyKey = 'x' | 'y' | 'width' | 'height'
 
-interface TransformOutputNodeStyle {
+type TransformInputNodeStyle = {
+  layout: string
+  tag: string | number
+  subarea: string
+}
+
+type InputNodeStyle = TransformInputNodeStyle &
+  Pick<NodeStyle, NonTransformNodeStylePropertyKey>
+
+type OutputNodeStyle = {
   layout: [number, number]
   tag: number
   subarea: Array<[number, number]>
-}
+} & Pick<NodeStyle, NonTransformNodeStylePropertyKey>
 
 class NodeStyle {
-  #x = 0
-  #y = 0
-  #width = 0
-  #height = 0
-  #layout: [number, number] = [NaN, NaN]
-  #tag: number = NaN
-  #subarea = []
-  #transformMap = new Map<NodeStylePropertyKey, boolean>()
+  x = 0
+  y = 0
+  width = 0
+  height = 0
+  private _layout: [number, number] = [NaN, NaN]
+  private _tag: number = NaN
+  private _subarea = []
+  private _transformValidPropMap = new Map<
+    TransformNodeStylePropertyKey,
+    boolean
+  >()
 
-  validate(value, key: NodeStylePropertyKey) {
+  constructor() {
+    this._transformValidPropMap.set('layout', false)
+    this._transformValidPropMap.set('tag', false)
+    this._transformValidPropMap.set('subarea', false)
+  }
+
+  private _validate(value, key: TransformNodeStylePropertyKey) {
     let data: { valid: boolean; result }
     switch (key) {
       case 'layout':
@@ -39,14 +57,14 @@ class NodeStyle {
         break
     }
     const { valid, result } = data
-    this.#transformMap.set(key, valid)
+    this._transformValidPropMap.set(key, valid)
     if (!valid) {
       warn(`invalid ${key} value: ${value}`)
     }
     return result
   }
 
-  static validateLayout(value: string) {
+  static validateLayout(value: TransformInputNodeStyle['layout']) {
     const toNumber = (str?: string) => (str === 'n' ? Infinity : Number(str))
     const process = (value: string): [number, number] => {
       if (isEmptyString(value)) {
@@ -71,14 +89,14 @@ class NodeStyle {
   }
 
   set layout(value: any) {
-    this.#layout = this.validate(value, 'layout')
+    this._layout = this._validate(value, 'layout')
   }
 
   get layout() {
-    return this.#layout
+    return this._layout
   }
 
-  static validateTag(value: string) {
+  static validateTag(value: TransformInputNodeStyle['tag']) {
     const result = Number(value)
     return {
       valid: !isNaN(result),
@@ -87,14 +105,14 @@ class NodeStyle {
   }
 
   set tag(value: any) {
-    this.#tag = this.validate(value, 'tag')
+    this._tag = this._validate(value, 'tag')
   }
 
   get tag() {
-    return this.#tag
+    return this._tag
   }
 
-  static validateSubarea(value: string) {
+  static validateSubarea(value: TransformInputNodeStyle['subarea']) {
     const part = value.split(' ')
     const match = part.map((i) => /^(\d+),(\d+)$/.exec(i))
     if (match.some(isNull)) {
@@ -110,11 +128,15 @@ class NodeStyle {
   }
 
   set subarea(value: any) {
-    this.#subarea = this.validate(value, 'subarea')
+    this._subarea = this._validate(value, 'subarea')
   }
 
   get subarea() {
-    return this.#subarea
+    return this._subarea
+  }
+
+  getValidityByKey(key: TransformNodeStylePropertyKey) {
+    return this._transformValidPropMap.get(key)
   }
 }
 
@@ -124,18 +146,59 @@ class Node {
 
   constructor(public type: NodeType) {}
 
-  setStyle(style: Partial<TransformInputNodeStyle>) {
+  setStyle(style: Partial<InputNodeStyle>) {
     for (const key in style) {
       this.#style[key] = style[key]
     }
   }
 
-  getStyle(): TransformOutputNodeStyle {
-    const { layout, tag, subarea } = this.#style
+  getStyle(): OutputNodeStyle {
+    const { layout, tag, subarea, x, y, width, height } = this.#style
     return {
       layout,
       tag,
       subarea,
+      x,
+      y,
+      width,
+      height,
+    }
+  }
+
+  private _setChildrenTag() {
+    if (this.#style.getValidityByKey('layout')) {
+      this.children.forEach((node, index) =>
+        node.setStyle({
+          tag: index,
+        })
+      )
+    }
+  }
+
+  appendChild(node: Node) {
+    this.children.push(node)
+    this._setChildrenTag()
+  }
+
+  removeChild(node: Node) {
+    const index = this.children.findIndex((i) => i === node)
+    if (index === -1) {
+      this.children.splice(index, 1)
+      this._setChildrenTag()
+    }
+  }
+
+  compute() {
+    if (
+      this.#style.getValidityByKey('layout') &&
+      this.#style.getValidityByKey('subarea')
+    ) {
+      const { layout, subarea, x, y, width, height } = this.#style
+      const [col, row] = layout
+      for (const child of this.children) {
+        if (!child.#style.getValidityByKey('tag')) break
+        const { tag } = child.#style
+      }
     }
   }
 }
