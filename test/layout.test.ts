@@ -45,4 +45,20 @@ describe('set nodeStyle property', () => {
     })
     assert.deepEqual(node.getStyle().layout, [NaN, NaN])
   })
+
+  it('subarea', () => {
+    const node = createNode(NodeType.Div)
+    node.setStyle({
+      subarea: '1,3 3,1',
+    })
+    assert.deepEqual(node.getStyle().subarea, [
+      [1, 3],
+      [3, 1],
+    ])
+
+    node.setStyle({
+      subarea: '1',
+    })
+    assert.deepEqual(node.getStyle().subarea, [])
+  })
 })
