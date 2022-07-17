@@ -24,14 +24,21 @@ type OutputNodeStyle = {
   subarea: Array<[number, number]>
 } & Pick<NodeStyle, NonTransformNodeStylePropertyKey>
 
+interface Area {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 class NodeStyle {
   x = 0
   y = 0
   width = 0
   height = 0
-  private _layout: [number, number] = [NaN, NaN]
-  private _tag: number = NaN
-  private _subarea = []
+  private _layout: OutputNodeStyle['layout'] = [NaN, NaN]
+  private _tag: OutputNodeStyle['tag'] = NaN
+  private _subarea: OutputNodeStyle['subarea'] = []
   private _transformValidPropMap = new Map<
     TransformNodeStylePropertyKey,
     boolean
@@ -138,9 +145,54 @@ class NodeStyle {
   getValidityByKey(key: TransformNodeStylePropertyKey) {
     return this._transformValidPropMap.get(key)
   }
+
+  zoning() {
+    const result: Array<Area> = []
+    let origin = [0, 0]
+    const [col, row] = this._layout
+    const visitList: Array<boolean> = Array(row * col).fill(false)
+    for (const [x, y] of this._subarea) {
+      const [originX, originY] = origin
+      if (x <= originX || y <= originY || x > col || y > row) {
+        this._transformValidPropMap.set('layout', false)
+        this._transformValidPropMap.set('subarea', false)
+        return []
+      }
+      for (let i = originX; i < x; i++) {
+        for (let j = originY; j < y; j++) {
+          visitList[i + j * col] = true
+        }
+      }
+      result.push({
+        x: originX / col,
+        y: originY / row,
+        width: (x - originX) / col,
+        height: (y - originY) / row,
+      })
+      for (let i = 0; i < visitList.length; i++) {
+        if (!visitList[i]) {
+          const x = i % col
+          const y = (i - x) / col
+          origin = [x, y]
+          break
+        }
+      }
+    }
+    if (visitList.some((visited) => !visited)) {
+      const [originX, originY] = origin
+      const [col, row] = this._layout
+      result.push({
+        x: originX / col,
+        y: originY / row,
+        width: (col - originX) / col,
+        height: (row - originY) / row,
+      })
+    }
+    return result
+  }
 }
 
-class Node {
+export class Node {
   children: Array<Node> = []
   #style = new NodeStyle()
 
@@ -165,26 +217,33 @@ class Node {
     }
   }
 
-  private _setChildrenTag() {
-    if (this.#style.getValidityByKey('layout')) {
-      this.children.forEach((node, index) =>
-        node.setStyle({
-          tag: index,
-        })
-      )
-    }
-  }
-
   appendChild(node: Node) {
     this.children.push(node)
-    this._setChildrenTag()
   }
 
   removeChild(node: Node) {
     const index = this.children.findIndex((i) => i === node)
     if (index === -1) {
       this.children.splice(index, 1)
-      this._setChildrenTag()
+    }
+  }
+
+  computeLayoutAndSubarea() {
+    const { x, y, width, height } = this.#style
+    const areaList = this.#style.zoning()
+    const useChildTag = this.children.every((child) =>
+      child.#style.getValidityByKey('tag')
+    )
+    for (let i = 0; i < this.children.length; i++) {
+      const child = this.children[i]
+      const tag = useChildTag ? child.#style.tag : i
+      const area = areaList[tag]
+      child.setStyle({
+        x: x + area.x * width,
+        y: y + area.y * height,
+        width: area.width * width,
+        height: area.height * height,
+      })
     }
   }
 
@@ -193,12 +252,7 @@ class Node {
       this.#style.getValidityByKey('layout') &&
       this.#style.getValidityByKey('subarea')
     ) {
-      const { layout, subarea, x, y, width, height } = this.#style
-      const [col, row] = layout
-      for (const child of this.children) {
-        if (!child.#style.getValidityByKey('tag')) break
-        const { tag } = child.#style
-      }
+      this.computeLayoutAndSubarea()
     }
   }
 }
