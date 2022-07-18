@@ -99,7 +99,7 @@ class NodeStyle {
     this._layout = this._validate(value, 'layout')
   }
 
-  get layout() {
+  get layout(): OutputNodeStyle['layout'] {
     return this._layout
   }
 
@@ -115,7 +115,7 @@ class NodeStyle {
     this._tag = this._validate(value, 'tag')
   }
 
-  get tag() {
+  get tag(): OutputNodeStyle['tag'] {
     return this._tag
   }
 
@@ -138,12 +138,16 @@ class NodeStyle {
     this._subarea = this._validate(value, 'subarea')
   }
 
-  get subarea() {
+  get subarea(): OutputNodeStyle['subarea'] {
     return this._subarea
   }
 
   getValidityByKey(key: TransformNodeStylePropertyKey) {
     return this._transformValidPropMap.get(key)
+  }
+
+  setValidityByKey(key: TransformNodeStylePropertyKey, value: boolean) {
+    return this._transformValidPropMap.set(key, value)
   }
 
   zoning() {
@@ -156,6 +160,9 @@ class NodeStyle {
       if (x <= originX || y <= originY || x > col || y > row) {
         this._transformValidPropMap.set('layout', false)
         this._transformValidPropMap.set('subarea', false)
+        warn(
+          `layout and subarea can not used together, layout: ${this._layout}, subarea: ${this._subarea}`
+        )
         return []
       }
       for (let i = originX; i < x; i++) {
@@ -228,31 +235,58 @@ export class Node {
     }
   }
 
-  computeLayoutAndSubarea() {
+  private _isUseChildTag() {
+    const len = this.children.length
+    const existInvaildTag = this.children.some((child) => {
+      const { tag } = child.#style
+      return !child.#style.getValidityByKey('tag') || tag > len - 1 || tag < 0
+    })
+    const tagSumFit =
+      this.children.reduce((acc, cur) => (acc += cur.#style.tag), 0) ===
+      ((len - 1) * len) / 2
+    const valid = !existInvaildTag && tagSumFit
+    if (!valid) {
+      warn(
+        `invalid tag list: ${this.children.map((child) => child.#style.tag)}`
+      )
+      this.children.forEach((child) =>
+        child.#style.setValidityByKey('tag', false)
+      )
+    }
+    return valid
+  }
+
+  private _computeAreaByLayout() {
     const { x, y, width, height } = this.#style
     const areaList = this.#style.zoning()
-    const useChildTag = this.children.every((child) =>
-      child.#style.getValidityByKey('tag')
-    )
+    const useChildTag = this._isUseChildTag()
     for (let i = 0; i < this.children.length; i++) {
       const child = this.children[i]
-      const tag = useChildTag ? child.#style.tag : i
-      const area = areaList[tag]
-      child.setStyle({
-        x: x + area.x * width,
-        y: y + area.y * height,
-        width: area.width * width,
-        height: area.height * height,
-      })
+      const { tag } = child.#style
+      const index = useChildTag ? tag : i
+      const area = areaList[index]
+      if (area) {
+        child.setStyle({
+          x: x + area.x * width,
+          y: y + area.y * height,
+          width: area.width * width,
+          height: area.height * height,
+        })
+      }
+      child.compute()
     }
   }
+
+  private _computeArea() {}
 
   compute() {
     if (
       this.#style.getValidityByKey('layout') &&
       this.#style.getValidityByKey('subarea')
     ) {
-      this.computeLayoutAndSubarea()
+      this._computeAreaByLayout()
+    } else {
+      this._computeArea()
     }
   }
 }

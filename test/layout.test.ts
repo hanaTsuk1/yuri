@@ -79,7 +79,7 @@ describe('node', () => {
     node.appendChild(child2)
     node.appendChild(child3)
     node.compute()
-    const getPosition = (node: Node) => {
+    const getArea = (node: Node) => {
       const { x, y, width, height } = node.getStyle()
       return {
         x,
@@ -88,7 +88,7 @@ describe('node', () => {
         height,
       }
     }
-    expect(getPosition(child)).toMatchInlineSnapshot(`
+    expect(getArea(child)).toMatchInlineSnapshot(`
       {
         "height": 200,
         "width": 200,
@@ -96,7 +96,7 @@ describe('node', () => {
         "y": 0,
       }
     `)
-    expect(getPosition(child2)).toMatchInlineSnapshot(`
+    expect(getArea(child2)).toMatchInlineSnapshot(`
       {
         "height": 100,
         "width": 200,
@@ -104,7 +104,7 @@ describe('node', () => {
         "y": 0,
       }
     `)
-    expect(getPosition(child3)).toMatchInlineSnapshot(`
+    expect(getArea(child3)).toMatchInlineSnapshot(`
       {
         "height": 100,
         "width": 200,
